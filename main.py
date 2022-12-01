@@ -6,8 +6,25 @@ import time
 import random
 from datetime import date
 
+
+def get_division_champ(div):
+    # division has a list of Team objects
+    div.teams.sort()
+    # find out how many teams are tied (2-4)
+    for i in range(1, len(div.teams)):
+        if div.teams[i] != div.teams[0]:
+            break
+    tied = div.teams[:i]
+    if len(tied) == 1: # no ties, return top team
+        return div.teams[0]
+    if len(tied) == 2: # two teams tied
+        # do first 4 tiebreakers, then just coinflip
+        # 1 - Head to Head
+            
+            
+
 class Team:
-    def __init__(self, name, code, wins, losses, ties, divRank):
+    def __init__(self, name, code, wins, losses, ties, divRank, divName, conf):
         self.name = name
         self.code = code
         self.wins = wins
@@ -16,18 +33,32 @@ class Team:
         self.divRank = divRank
         self.playoff_elo = 0
         self.playoff_seed = 0
+        self.divName = divName
+        self.conf = conf
+        self.games = []
+    def add_game(self, game):
+        self.games.append(game)
     def __repr__(self):
+        if self.ties > 0:
+            return self.name + " (" + str(self.wins) + "-" + str(self.losses) + "-" + str(self.ties) + ")"
         return self.name + " (" + str(self.wins) + "-" + str(self.losses) + ")"
     def __str__(self):
+        if self.ties > 0:
+            return self.name + " (" + str(self.wins) + "-" + str(self.losses) + "-" + str(self.ties) + ")"
         return self.name + " (" + str(self.wins) + "-" + str(self.losses) + ")"
     def __gt__(self, other):
-        return self.wins > other.wins
+        return self.wins + 0.5 * self.ties > other.wins + 0.5 * other.ties
     def __eq__(self, other):
-        return self.wins == other.wins
-    def __lt__(self, other):
-        return self.wins < other.wins
+        return self.wins == other.wins and self.losses == other.losses
     def same(self, other):
         return self.name == other.name
+
+class Game:
+    def __init__(self, winner, loser, wscore, lscore):
+        self.winner = winner
+        self.loser = loser
+        self.wscore = wscore
+        self.lscore = lscore
 
 class Division:
     def __init__(self, name):
@@ -51,22 +82,27 @@ class Standings:
         self.afc = []
         self.nfc = []
         self.abbs_to_codes = abbs_to_codes
-    def add_result(self, winner, loser):
+    def add_result(self, winner, loser, wscore, lscore):
         # search both afc and nfc for winning and losing teams
+        game = Game(winner, loser, wscore, lscore)
         for d in self.afc:
             for t in d.teams:
                 if self.abbs_to_codes[winner] == t.code:
                     # update winning team
                     t.wins += 1
+                    t.add_game(game)
                 if self.abbs_to_codes[loser] == t.code:
                     t.losses += 1
+                    t.add_game(game)
         for d in self.nfc:
             for t in d.teams:
                 if self.abbs_to_codes[winner] == t.code:
                     # update winning team
                     t.wins += 1
+                    t.add_game(game)
                 if self.abbs_to_codes[loser] == t.code:
                     t.losses += 1
+                    t.add_game(game)
     def update_elo(self, team, elo):
         for d in self.afc:
             for t in d.teams:
@@ -82,6 +118,7 @@ class Standings:
         # returns two lists, with 7 playoff seeds in AFC and NFC
         afc_seeds = []
         nfc_seeds = []
+        # sort divisions
         for d in self.afc:
             d.teams.sort(reverse=True)
         for d in self.nfc:
@@ -154,7 +191,7 @@ class Results:
         sorted_teams = sorted(self.teams_to_sbs.items(), key=lambda x: x[1], reverse=True)
         for t in sorted_teams:
             win_pct = t[1] / self.epochs
-            out += t[0] + ": " + "{:.2%}".format(win_pct) + "\n"
+            out += t[0] + ": " + "{:.2%}".format(win_pct) + " (" + str(t[1]) + " SB wins)\n"
         return out
 
 
@@ -166,6 +203,8 @@ def convert_date(str):
     return date(year, month, day)   
 
 def sim_game(team1, team2):
+    # simulates a game result using elo ratings
+    # doesn't allow ties
     elo_diff = team1.playoff_elo - team2.playoff_elo
     prob1 = 1 / (10 ** (-elo_diff / 400) + 1)
     return team1 if random.random() <= prob1 else team2
@@ -175,8 +214,8 @@ division_names = ["AFC East", "AFC North", "AFC West", "AFC South", "NFC East", 
 if __name__ == "__main__":
     elo = pd.read_csv("nfl_elo_latest.csv")
     team_codes = pd.read_csv("team_codes.csv")
-    standings_url = "https://api.mysportsfeeds.com/v2.1/pull/nfl/current/standings.json"
-    key = "5a534df5-28a6-44d2-be37-ba3dce"
+    standings_url = "https://api.mysportsfeeds.com/v2.1/pull/nfl/2022-2023-regular/standings.json"
+    key = "620395f2-bb1d-4a47-b464-697aec"
 
     encoded_auth = "Basic " + base64.b64encode('{}:{}'.format(key,"MYSPORTSFEEDS").encode('utf-8')).decode('ascii')
     r = requests.get(standings_url, headers={"Authorization": encoded_auth})
@@ -201,8 +240,9 @@ if __name__ == "__main__":
         ties = team["stats"]["standings"]["ties"]
         divRank = team["divisionRank"]["rank"]
         divName = team["divisionRank"]["divisionName"]
-        t = Team(name, code, wins, losses, ties, divRank)
         divIndex = division_names.index(divName)
+        conf = 0 if divIndex < 4 else 1 # conf = 0 if AFC, 1 if NFC
+        t = Team(name, code, wins, losses, ties, divRank, divName, conf)
         # add new team object to its division
         if divIndex < 4:
             standings.afc[divIndex].teams.append(t)
@@ -214,14 +254,16 @@ if __name__ == "__main__":
     elo["dateObject"] = elo["date"].apply(convert_date)
 
     start_date = date.today() # use today's date to stay current
-    #print(start_date)
+    print(start_date)
 
-    #print(standings)
+    print(standings)
 
-    num_epochs = 50000
+    num_epochs = 1000
 
     results = Results()
 
+    # simulate rest of regular season, if any
+    # no ties allowed in simulations
     for i in range(num_epochs):
         if i % 100 == 0:
             print(str(i) + "/" + str(num_epochs))
@@ -243,8 +285,8 @@ if __name__ == "__main__":
 
         #print(standings)
         afc_seeds, nfc_seeds = standings.get_playoff_seedings()
-        #print(afc_seeds)
-        #print(nfc_seeds)
+        print(afc_seeds)
+        print(nfc_seeds)
         for ind, team in enumerate(afc_seeds):
             team.playoff_seed = ind + 1
 
@@ -287,4 +329,5 @@ if __name__ == "__main__":
         standings.reset(info)
     
     print(results)
+    
     
