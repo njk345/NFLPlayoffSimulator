@@ -77,7 +77,13 @@ def get_wilcards(standings, div_champs):
     rem_teams = list(set(rem_teams).difference(div_champs))
     # Figure out tiebreakers
     rem_teams.sort()
-    
+    wildcards = []
+    i = 0
+    j = 0
+    while len(wildcards) < 3:
+        while rem_teams[i] == rem_teams[j]:
+            j += 1
+       
     return
         
 def is_team1(game, team1):
