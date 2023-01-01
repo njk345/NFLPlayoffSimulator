@@ -6,6 +6,11 @@ import time
 import random
 from datetime import date, datetime
 from enum import Enum
+from tiebreakers import two_team_div_tiebreaker, two_team_wc_tiebreaker, threeplus_team_div_tiebreaker, threeplus_team_wc_tiebreaker
+
+# TODO:
+# - create two-team and three-plus-team tiebreaker functions, which call individual tiebreaker functions
+# - diff functions for division and wild card
 
 standings_url = "https://api.mysportsfeeds.com/v2.1/pull/nfl/2022-2023-regular/standings.json"
 key = "620395f2-bb1d-4a47-b464-697aec"
@@ -67,7 +72,7 @@ def get_division_champ(div):
         # TODO: handle 3 team+ division ties
         return tied[0]
 
-def get_wilcards(standings, div_champs):
+def get_wildcards(standings, div_champs):
     # TODO: write get wildcards function for a conference
     rem_teams = []
     for d in standings.afc:
@@ -79,11 +84,21 @@ def get_wilcards(standings, div_champs):
     rem_teams.sort()
     wildcards = []
     i = 0
-    j = 0
+    j = 1
     while len(wildcards) < 3:
         while rem_teams[i] == rem_teams[j]:
             j += 1
-       
+        if j - i == 1: # If no ties
+            wildcards.append(rem_teams[i])
+            i = j
+            j += 1
+        elif j - i == 2: # If two teams tied
+            winner = 
+        elif j - i > 2: # If three or more teams tied
+
+        else:
+            # shouldn't be here
+
     return
         
 def is_team1(game, team1):
