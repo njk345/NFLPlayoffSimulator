@@ -2,9 +2,8 @@ import pandas as pd
 import requests
 import base64
 import json
-import time
 import random
-from datetime import date, datetime
+from datetime import datetime
 from enum import Enum
 from tiebreakers import two_team_div_tiebreaker, two_team_wc_tiebreaker, threeplus_team_div_tiebreaker, threeplus_team_wc_tiebreaker
 
@@ -72,32 +71,75 @@ def get_wildcards(standings, div_champs):
     i = 0
     j = 1
     # Fill the wildcards one at a time
-    while len(wildcards) < 3 and i < len(rem_teams):
-        while rem_teams[i] == rem_teams[j]:
-            j += 1
-        if j - i == 1: # If no ties, add first team and continue
-            wildcards.append(rem_teams[i])
-            i = j
-            j += 1
-        elif j - i == 2: # If two teams tied, run two-team tiebreaker
+    while len(wildcards) < 3:
+        i = 0
+        while rem_teams[0] == rem_teams[i]:
+            i += 1
+        if i == 1: # If no ties, add first team and continue
+            wildcards.append(rem_teams[1])
+            rem_teams.pop(1)
+        elif i == 2: # If two teams tied, run two-team tiebreaker
             # Determine if from same division or not
-            if rem_teams[i].divName == rem_teams[j-1].divName:
-                winner = two_team_div_tiebreaker(rem_teams[i], rem_teams[j-1])
+            if rem_teams[0].divName == rem_teams[1].divName:
+                winner = two_team_div_tiebreaker(rem_teams[0], rem_teams[1])
             else:
-                winner = two_team_wc_tiebreaker(rem_teams[i], rem_teams[j-1])
-            if winner.same(rem_teams[i]): # T1 WON
-                wildcards.append(rem_teams[i])
-                wildcards.append(rem_teams[j-1])
+                winner = two_team_wc_tiebreaker(rem_teams[0], rem_teams[1])
+            if winner.same(rem_teams[0]): # T1 WON
+                wildcards.append(rem_teams[0])
+                rem_teams = rem_teams[1:]
             else: # T2 WON
-                wildcards.append(rem_teams[j-1])
-                wildcards.append(rem_teams[i])
-        elif j - i > 2: # If three or more teams tied
-            
+                wildcards.append(rem_teams[1])
+                rem_teams.pop(1)
+        elif i > 2: # If three or more teams tied
+            # Group tied teams by division
+            # Find winner of each division using div tiebreakers
+            # Finally, compare winner of each division using wc tiebreakers
+            # Come up with a single winner of the 3+ team tie (NFL words this so confusingly!)
+            tied = rem_teams[:i]
+            div_sets = {}
+            for team in tied:
+                if team.divName in div_sets:
+                    div_sets[team.divName].append(team)
+                else:
+                    div_sets[team.divName] = [team]
+            div_winners = []
+            for div in div_sets.keys():
+                div_winner = two_team_div_tiebreaker(div_sets[div][0], div_sets[div][1]) if len(div_sets[div]) < 3 else threeplus_team_div_tiebreaker(div_sets[div])
+                div_winners.append(div_winner)
+            winner = two_team_wc_tiebreaker(div_winners[0], div_winners[1]) if len(div_winners) < 3 else threeplus_team_wc_tiebreaker(div_winners)
+            wildcards.append(winner)
+            # find winner's original index in rem_teams and remove
+            for t in range(len(rem_teams)):
+                if winner.same(t):
+                    break
+            rem_teams.pop(t)
         else:
             # shouldn't be here
-            return None
+            raise RuntimeError()
+    return wildcards
 
-    return
+def get_playoff_seeds(standings):
+    # returns two lists, with 7 playoff seeds in AFC and NFC
+    afc_seeds = []
+    nfc_seeds = []
+    # get division champs
+    afc_champs = []
+    for d in standings.afc:
+        champ = get_division_champ(d)
+        afc_champs.append(champ)
+    nfc_champs = []
+    for d in standings.nfc:
+        champ = get_division_champ(d)
+        nfc_champs.append(champ)
+    # TODO: sort division champs into 1-4 seeds
+
+    # get wildcard teams
+    afc_seeds.extend(get_wildcards(standings, afc_champs))
+    nfc_seeds.extend(get_wildcards(standings, nfc_champs))
+
+    assert len(afc_seeds) == 7
+    assert len(nfc_seeds) == 7
+    return afc_seeds, nfc_seeds
         
 def is_team1(game, team1):
     return abbs_to_codes[game.winner] == team1.code
@@ -106,96 +148,6 @@ def get_opp(game, team1):
     is_t1 = is_team1(game, team1)
     opp = game.t1code if is_t1 else game.t2code
     return opp
-        
-# Returns T1WIN if team1 wins tiebreaker, T2WIN if team2 wins, TIE if not settled
-# Head-to-head record
-def tiebreaker1(team1, team2):
-    # Head-to-head team record
-    t1wins = 0
-    t2wins = 0
-    for game in team1.games:
-        # abbr of opposing team
-        opp = get_opp(game, team1)
-        if abbs_to_codes[opp] == team2.code:
-            # found game against team2
-            t1wins += wins_from_game(game, True)
-            t2wins += wins_from_game(game, False)
-    if t1wins > t2wins:
-        return Result.T1WIN
-    elif t2wins > t1wins:
-        return Result.T2WIN
-    return Result.TIE
-
-# In-division record
-def tiebreaker2(team1, team2):
-    t1wins = 0
-    for game in team1.games:
-        opp = get_opp(game, team1)
-        if team_info[opp]["DIV"] == team_info[team1.code]["DIV"]:
-            # teams in same division, count result
-            t1wins += wins_from_game(game, is_t1)
-    t2wins = 0
-    for game in team2.games:
-        opp = get_opp(game, team2)
-        if team_info[opp]["DIV"] == team_info[team2.code]["DIV"]:
-            # teams in same division, count result
-            t2wins += wins_from_game(game, is_t1)
-    if t1wins > t2wins:
-        return Result.T1WIN
-    elif t2wins > t1wins:
-        return Result.T2WIN
-    return Result.TIE
-
-# Record in common opponents
-def tiebreaker3(team1, team2):
-    # use sets to find common opponents
-    # loop through to get total wins each against common opponents
-    t1_opps = {}
-    for game in team1.games:
-        t1_opps.add(get_opp(game, team1))
-    t2_opps = {}
-    for game in team2.games:
-        t2_opps.add(get_opp(game, team2))
-    common_opps = t1_opps.intersection(t2_opps)
-    t1wins = 0
-    for game in team1.games:
-        if get_opp(game, team1) in common_opps:
-            t1wins += wins_from_game(game, team1)
-    t2wins = 0
-    for game in team2.games:
-        if get_opp(game, team2) in common_opps:
-            t2wins += wins_from_game(game, team2)
-    if t1wins > t2wins:
-        return Result.T1WIN
-    elif t2wins > t1wins:
-        return Result.T2WIN
-    return Result.TIE
-
-# Record in conference
-def tiebreaker4(team1, team2):
-    t1wins = 0
-    for game in team1.games:
-        opp = get_opp(game, team1)
-        if team_info[opp]["DIV"].startswith(team_info[team1.code]["DIV"]):
-            # opponent in same conference
-            is_t1 = is_team1(game, team1)
-            t1wins += wins_from_game(game, is_t1)
-    t2wins = 0
-    for game in team2.games:
-        opp = get_opp(game, team2)
-        if team_info[opp]["DIV"].startswith(team_info[team2.code]["DIV"]):
-            # opponent in same conference
-            is_t1 = is_team1(game, team2)
-            t2wins += wins_from_game(game, is_t1)
-    if t1wins > t2wins:
-        return Result.T1WIN
-    elif t2wins > t1wins:
-        return Result.T2WIN
-    return Result.TIE
-
-# Coin flip
-def tiebreaker5(team1, team2):
-    return Result.T1WIN if random.random() < 0.5 else Result.T2WIN
 
 class Team:
     def __init__(self, name, code, wins, losses, ties, divRank, divName, conf):
@@ -323,41 +275,6 @@ class Standings:
                 if abbs_to_codes[team] == t.code:
                     t.playoff_elo = elo
                     return
-    def get_playoff_seedings(self):
-        # returns two lists, with 7 playoff seeds in AFC and NFC
-        afc_seeds = []
-        nfc_seeds = []
-        # sort divisions
-        for d in self.afc:
-            d.teams.sort(reverse=True)
-        for d in self.nfc:
-            d.teams.sort(reverse=True)
-        # add four division champs
-        for d in self.afc:
-            afc_seeds.append(d.teams[0])
-        afc_seeds.sort(reverse=True)
-        # add three wild cards
-        afc_wild = []
-        for d in self.afc:
-            afc_wild.extend(d.teams[1:])
-        afc_wild.sort(reverse=True)
-        afc_seeds.extend(afc_wild[:3])
-
-        # repeat for NFC
-        # add four division champs
-        for d in self.nfc:
-            nfc_seeds.append(d.teams[0])
-        nfc_seeds.sort(reverse=True)
-        # add three wild cards
-        nfc_wild = []
-        for d in self.nfc:
-            nfc_wild.extend(d.teams[1:])
-        nfc_wild.sort(reverse=True)
-        nfc_seeds.extend(nfc_wild[:3])
-
-        assert len(afc_seeds) == 7
-        assert len(nfc_seeds) == 7
-        return afc_seeds, nfc_seeds
     def reset(self, info):
         for team in info:
             code = team["team"]["id"]
@@ -461,7 +378,7 @@ if __name__ == "__main__":
                 #print("Winner: " + team2 + ", Loser: " + team1)
             
         # Determine seedings
-        afc_seeds, nfc_seeds = standings.get_playoff_seedings()
+        afc_seeds, nfc_seeds = get_playoff_seeds(standings)
         for ind, team in enumerate(afc_seeds):
             team.playoff_seed = ind + 1
 

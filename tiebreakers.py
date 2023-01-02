@@ -1,5 +1,5 @@
-from main import get_opp, is_team1, wins_from_game, Result, abbs_to_codes, team_info
 import random
+from main import get_opp, is_team1, wins_from_game, Result, abbs_to_codes, team_info
 
 # Takes in two team objects and returns the winner after divisional tiebreakers
 # 1. Head-to-head
