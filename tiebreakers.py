@@ -1,18 +1,57 @@
-from main import get_opp, is_team1, Result
+from main import get_opp, is_team1, wins_from_game, Result, abbs_to_codes, team_info
+import random
 
+# Takes in two team objects and returns the winner after divisional tiebreakers
+# 1. Head-to-head
+# 2. Divisional record
+# 3. Common games
+# 4. Conference record
+# 5. Coin flip
 def two_team_div_tiebreaker(team1, team2):
-    pass
+    tb1 = tiebreaker1(team1, team2)
+    if tb1 != Result.TIE:
+        return team1 if tb1 == Result.T1WIN else team2
+    tb2 = tiebreaker2(team1, team2)
+    if tb2 != Result.TIE:
+        return team1 if tb2 == Result.T1WIN else team2
+    tb3 = tiebreaker3(team1, team2)
+    if tb3 != Result.TIE:
+        return team1 if tb3 == Result.T1WIN else team2
+    tb4 = tiebreaker4(team1, team2)
+    if tb4 != Result.TIE:
+        return team1 if tb4 == Result.T1WIN else team2
+    tb5 = tiebreaker5(team1, team2)
+    return team1 if tb5 == Result.T1WIN else team2
 
+# Takes in two Team objects and returns the winner after wild card tiebreakers
+# 1. Head-to-head
+# 2. Conference record
+# 3. Common games (minimum of 4)
+# 4. Coin flip
 def two_team_wc_tiebreaker(team1, team2):
+    tb1 = tiebreaker1(team1, team2)
+    if tb1 != Result.TIE:
+        return team1 if tb1 == Result.T1WIN else team2
+    tb2 = tiebreaker4(team1, team2)
+    if tb2 != Result.TIE:
+        return team1 if tb2 == Result.T1WIN else team2
+    tb3 = tiebreaker3(team1, team2)
+    if tb3 != Result.TIE:
+        return team1 if tb3 == Result.T1WIN else team2
+    tb4 = tiebreaker5(team1, team2)
+    return team1 if tb4 == Result.T1WIN else team2
+
+# Takes in a list of three or more Team objects and returns the winner (1) after divisional tiebreakers
+def threeplus_team_div_tiebreaker(teams):
     pass
 
-def threeplus_team_div_tiebreaker(team1, team2):
+# Takes in a list of three or more Team objects and returns the winner (1) after wild card tiebreakers
+def threeplus_team_wc_tiebreaker(teams):
     pass
 
-def threeplus_team_wc_tiebreaker(team1, team2):
-    pass
+# Each tiebreaker returns T1WIN if team1 wins tiebreaker, T2WIN if team2 wins, TIE if not settled
+# -------------------------------------------------------------
 
-# Returns T1WIN if team1 wins tiebreaker, T2WIN if team2 wins, TIE if not settled
 # Head-to-head record
 def tiebreaker1(team1, team2):
     # Head-to-head team record

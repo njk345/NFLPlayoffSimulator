@@ -53,24 +53,10 @@ def get_division_champ(div):
     if len(tied) == 1: # no ties, return top team
         return div.teams[0]
     if len(tied) == 2: # two teams tied
-        # do first 4 tiebreakers, then just coinflip
-        tb1 = tiebreaker1(tied[0], tied[1])
-        if tb1 != Result.TIE:
-            return tied[0] if tb1 == Result.T1WIN else tied[1]
-        tb2 = tiebreaker2(tied[0], tied[1])
-        if tb2 != Result.TIE:
-            return tied[0] if tb2 == Result.T1WIN else tied[1]
-        tb3 = tiebreaker3(tied[0], tied[1])
-        if tb3 != Result.TIE:
-            return tied[0] if tb3 == Result.T1WIN else tied[1]
-        tb4 = tiebreaker4(tied[0], tied[1])
-        if tb4 != Result.TIE:
-            return tied[0] if tb4 == Result.T1WIN else tied[1]
-        tb5 = tiebreaker5(tied[0], tied[1])
-        return tied[0] if tb5 == Result.T1WIN else tied[1]
+        return two_team_div_tiebreaker(tied[0], tied[1])
     if len(tied) > 2:
         # TODO: handle 3 team+ division ties
-        return tied[0]
+        return threeplus_team_div_tiebreaker(tied[0], tied[1])
 
 def get_wildcards(standings, div_champs):
     # TODO: write get wildcards function for a conference
@@ -85,19 +71,31 @@ def get_wildcards(standings, div_champs):
     wildcards = []
     i = 0
     j = 1
-    while len(wildcards) < 3:
+    # Fill the wildcards one at a time
+    while len(wildcards) < 3 and i < len(rem_teams):
         while rem_teams[i] == rem_teams[j]:
             j += 1
-        if j - i == 1: # If no ties
+        if j - i == 1: # If no ties, add first team and continue
             wildcards.append(rem_teams[i])
             i = j
             j += 1
-        elif j - i == 2: # If two teams tied
-            winner = 
+        elif j - i == 2: # If two teams tied, run two-team tiebreaker
+            # Determine if from same division or not
+            if rem_teams[i].divName == rem_teams[j-1].divName:
+                winner = two_team_div_tiebreaker(rem_teams[i], rem_teams[j-1])
+            else:
+                winner = two_team_wc_tiebreaker(rem_teams[i], rem_teams[j-1])
+            if winner.same(rem_teams[i]): # T1 WON
+                wildcards.append(rem_teams[i])
+                wildcards.append(rem_teams[j-1])
+            else: # T2 WON
+                wildcards.append(rem_teams[j-1])
+                wildcards.append(rem_teams[i])
         elif j - i > 2: # If three or more teams tied
-
+            
         else:
             # shouldn't be here
+            return None
 
     return
         
