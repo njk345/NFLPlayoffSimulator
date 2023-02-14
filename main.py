@@ -4,159 +4,23 @@ import base64
 import json
 import random
 from datetime import datetime
-from enum import Enum
-from tiebreakers import two_team_div_tiebreaker, two_team_wc_tiebreaker, threeplus_team_div_tiebreaker, threeplus_team_wc_tiebreaker
-
-# TODO:
-# - create two-team and three-plus-team tiebreaker functions, which call individual tiebreaker functions
-# - diff functions for division and wild card
+from tiebreakers import Tiebreakers, Result
 
 standings_url = "https://api.mysportsfeeds.com/v2.1/pull/nfl/2022-2023-regular/standings.json"
 key = "620395f2-bb1d-4a47-b464-697aec"
 division_names = ["AFC East", "AFC North", "AFC West", "AFC South", "NFC East", "NFC North", "NFC West", "NFC South"]
-num_epochs = 50000
+num_epochs = 1
 
 abbs_to_codes = None
 team_info = None # map of team codes to dicts containing abbr, name, division name
 
-class Result(Enum):
-    T1WIN = 0
-    T1LOSS = 1
-    TIE = 2
-
-def wins_from_game(game, is_t1):
-    if is_t1:
-        if game.result == Result.T1WIN:
-            return 1
-        elif game.result == Result.T1LOSS:
-            return 0
-        else:
-            return 0.5
-    else:
-        if game.result == Result.T1WIN:
-            return 0
-        elif game.result == Result.T1LOSS:
-            return 1
-        else:
-            return 0.5
-
-
-def get_division_champ(div):
-    # division has a list of Team objects
-    div.teams.sort()
-    # find out how many teams are tied (2-4)
-    for i in range(1, len(div.teams)):
-        if div.teams[i] != div.teams[0]:
-            break
-    tied = div.teams[:i]
-    if len(tied) == 1: # no ties, return top team
-        return div.teams[0]
-    if len(tied) == 2: # two teams tied
-        return two_team_div_tiebreaker(tied[0], tied[1])
-    if len(tied) > 2:
-        # TODO: handle 3 team+ division ties
-        return threeplus_team_div_tiebreaker(tied[0], tied[1])
-
-def get_wildcards(standings, div_champs):
-    # TODO: write get wildcards function for a conference
-    rem_teams = []
-    for d in standings.afc:
-        rem_teams.extend(d.teams)
-    for d in standings.nfc:
-        rem_teams.extend(d.teams)
-    rem_teams = list(set(rem_teams).difference(div_champs))
-    # Figure out tiebreakers
-    rem_teams.sort()
-    wildcards = []
-    i = 0
-    j = 1
-    # Fill the wildcards one at a time
-    while len(wildcards) < 3:
-        i = 0
-        while rem_teams[0] == rem_teams[i]:
-            i += 1
-        if i == 1: # If no ties, add first team and continue
-            wildcards.append(rem_teams[1])
-            rem_teams.pop(1)
-        elif i == 2: # If two teams tied, run two-team tiebreaker
-            # Determine if from same division or not
-            if rem_teams[0].divName == rem_teams[1].divName:
-                winner = two_team_div_tiebreaker(rem_teams[0], rem_teams[1])
-            else:
-                winner = two_team_wc_tiebreaker(rem_teams[0], rem_teams[1])
-            if winner.same(rem_teams[0]): # T1 WON
-                wildcards.append(rem_teams[0])
-                rem_teams = rem_teams[1:]
-            else: # T2 WON
-                wildcards.append(rem_teams[1])
-                rem_teams.pop(1)
-        elif i > 2: # If three or more teams tied
-            # Group tied teams by division
-            # Find winner of each division using div tiebreakers
-            # Finally, compare winner of each division using wc tiebreakers
-            # Come up with a single winner of the 3+ team tie (NFL words this so confusingly!)
-            tied = rem_teams[:i]
-            div_sets = {}
-            for team in tied:
-                if team.divName in div_sets:
-                    div_sets[team.divName].append(team)
-                else:
-                    div_sets[team.divName] = [team]
-            div_winners = []
-            for div in div_sets.keys():
-                div_winner = two_team_div_tiebreaker(div_sets[div][0], div_sets[div][1]) if len(div_sets[div]) < 3 else threeplus_team_div_tiebreaker(div_sets[div])
-                div_winners.append(div_winner)
-            winner = two_team_wc_tiebreaker(div_winners[0], div_winners[1]) if len(div_winners) < 3 else threeplus_team_wc_tiebreaker(div_winners)
-            wildcards.append(winner)
-            # find winner's original index in rem_teams and remove
-            for t in range(len(rem_teams)):
-                if winner.same(t):
-                    break
-            rem_teams.pop(t)
-        else:
-            # shouldn't be here
-            raise RuntimeError()
-    return wildcards
-
-def get_playoff_seeds(standings):
-    # returns two lists, with 7 playoff seeds in AFC and NFC
-    afc_seeds = []
-    nfc_seeds = []
-    # get division champs
-    afc_champs = []
-    for d in standings.afc:
-        champ = get_division_champ(d)
-        afc_champs.append(champ)
-    nfc_champs = []
-    for d in standings.nfc:
-        champ = get_division_champ(d)
-        nfc_champs.append(champ)
-    # TODO: sort division champs into 1-4 seeds
-
-    # get wildcard teams
-    afc_seeds.extend(get_wildcards(standings, afc_champs))
-    nfc_seeds.extend(get_wildcards(standings, nfc_champs))
-
-    assert len(afc_seeds) == 7
-    assert len(nfc_seeds) == 7
-    return afc_seeds, nfc_seeds
-        
-def is_team1(game, team1):
-    return abbs_to_codes[game.winner] == team1.code
-
-def get_opp(game, team1):
-    is_t1 = is_team1(game, team1)
-    opp = game.t1code if is_t1 else game.t2code
-    return opp
-
 class Team:
-    def __init__(self, name, code, wins, losses, ties, divRank, divName, conf):
+    def __init__(self, name, code, wins, losses, ties, divName, conf):
         self.name = name
         self.code = code
         self.wins = wins
         self.losses = losses
         self.ties = ties
-        self.divRank = divRank
         self.playoff_elo = 0
         self.playoff_seed = 0
         self.divName = divName
@@ -177,6 +41,7 @@ class Team:
                 self.wins += 1
             else:
                 self.ties += 1
+        self.games.append(game)
     def __repr__(self):
         if self.ties > 0:
             return self.name + " (" + str(self.wins) + "-" + str(self.losses) + "-" + str(self.ties) + ")"
@@ -191,8 +56,9 @@ class Team:
         # allows comparison between Team object and int, respresenting a team code
         if isinstance(other, int):
             return self.code == other
-        # otherwise compare two Team objects
-        return self.wins == other.wins and self.losses == other.losses
+        wlt_self = (self.wins + 0.5 * self.ties) / len(self.games)
+        wlt_other = (other.wins + 0.5 * other.ties) / len(other.games)
+        return wlt_self == wlt_other
     def __hash__(self):
         return hash(self.code)
     def same(self, other):
@@ -203,6 +69,18 @@ class Game:
         self.t1code = t1code
         self.t2code = t2code
         self.result = result
+    def __repr__(self):
+        if self.result == Result.T1WIN:
+            return "(" + team_info[self.t1code]["ABBR"] + " beat " + team_info[self.t2code]["ABBR"] + ")"
+        if self.result == Result.T1LOSS:
+            return "(" + team_info[self.t2code]["ABBR"] + " beat " + team_info[self.t1code]["ABBR"] + ")"
+        return "(" + team_info[self.t1code]["ABBR"] + " tied " + team_info[self.t2code]["ABBR"] + ")"
+    def __str__(self):
+        if self.result == Result.T1WIN:
+            return "(" + team_info[self.t1code]["ABBR"] + " beat " + team_info[self.t2code]["ABBR"] + ")"
+        if self.result == Result.T1LOSS:
+            return "(" + team_info[self.t2code]["ABBR"] + " beat " + team_info[self.t1code]["ABBR"] + ")"
+        return "(" + team_info[self.t1code]["ABBR"] + " tied " + team_info[self.t2code]["ABBR"] + ")"
 
 class Division:
     def __init__(self, name):
@@ -221,7 +99,7 @@ class Division:
         return s
 
 class Standings:
-    def __init__(self, info):
+    def __init__(self, info, past_results):
         # create conferences, fill divisions with teams, fill teams with info / games
         self.afc = []
         self.nfc = []
@@ -233,19 +111,27 @@ class Standings:
         for team in info:
             name = team["team"]["city"] + " " + team["team"]["name"]
             code = team["team"]["id"]
-            wins = team["stats"]["standings"]["wins"]
-            losses = team["stats"]["standings"]["losses"]
-            ties = team["stats"]["standings"]["ties"]
-            divRank = team["divisionRank"]["rank"]
+            wins = 0
+            losses = 0
+            ties = 0
             divName = team["divisionRank"]["divisionName"]
             divIndex = division_names.index(divName)
             conf = 0 if divIndex < 4 else 1 # conf = 0 if AFC, 1 if NFC
-            t = Team(name, code, wins, losses, ties, divRank, divName, conf)
+            t = Team(name, code, wins, losses, ties, divName, conf)
             # add new team object to its division
             if divIndex < 4:
                 self.afc[divIndex].teams.append(t)
             else:
                 self.nfc[divIndex-4].teams.append(t)
+
+        # Add past game results
+        for row in range(past_results.shape[0]):
+            t1 = abbs_to_codes[past_results.loc[row, "team1"]]
+            t2 = abbs_to_codes[past_results.loc[row, "team2"]]
+            s1 = past_results.loc[row, "score1"]
+            s2 = past_results.loc[row, "score2"]
+            result = Result.T1WIN if s1 > s2 else Result.T1LOSS if s2 > s1 else Result.TIE
+            self.add_result(t1, t2, result)
         
     def add_result(self, t1code, t2code, result):
         # search both afc and nfc for winning and losing teams
@@ -302,7 +188,7 @@ class Standings:
             s += str(d) + "\n"
         return s 
 
-class Results:
+class PlayoffResults:
     def __init__(self):
         self.teams_to_sbs = dict()
         self.epochs = 0
@@ -328,8 +214,14 @@ def sim_game(team1, team2):
     return team1 if random.random() <= prob1 else team2
 
 if __name__ == "__main__":
+    start_date = datetime.now() # use today's date to stay current
     elo = pd.read_csv("nfl_elo_latest.csv")
     raw_team_info = pd.read_csv("team_info.csv")
+
+    elo = elo[elo["playoff"].isna() == True]
+    elo["dateObject"] = elo["date"].apply((lambda x: datetime.strptime(x, "%Y-%m-%d")))
+    past_results = elo[elo["dateObject"] < start_date]
+    rem_games = elo[elo["dateObject"] >= start_date]
 
     encoded_auth = "Basic " + base64.b64encode('{}:{}'.format(key,"MYSPORTSFEEDS").encode('utf-8')).decode('ascii')
     r = requests.get(standings_url, headers={"Authorization": encoded_auth})
@@ -337,9 +229,20 @@ if __name__ == "__main__":
 
     # Create map of team abbreviations to team codes
     abbs_to_codes = dict(zip(raw_team_info["ABBR"].to_list(), raw_team_info["CODE"].to_list()))
-
+    # Turn raw_team_info into map of maps by team_id
+    team_info = {}
+    ids = raw_team_info["CODE"]
+    rest = raw_team_info.drop("CODE", axis=1)
+    for id in ids:
+        team_info[id] = {}
+    for row in range(raw_team_info.shape[0]):
+        for col in rest.columns:
+            team_info[ids[row]][col] = rest.loc[row, col]
+    
     # First load standings at current week --> each team wins and losses, organized by division / conferences
-    standings = Standings(info)
+    standings = Standings(info, past_results)
+
+    tiebreakers = Tiebreakers(abbs_to_codes, team_info)
 
     # 1. Standings contain info from API for already-played games
     # 2. Get remaining game info from elo rankings CSV
@@ -348,18 +251,11 @@ if __name__ == "__main__":
     # 5. Simulate playoffs and get Super Bowl champion
     # 6. Repeat many times to get probabilities of playoffs and super bowl
 
-    elo["dateObject"] = elo["date"].apply((lambda x: datetime.strptime(x, "%Y-%m-%d")))
-
-    start_date = datetime.now() # use today's date to stay current
-
-    rem_games = elo[elo["dateObject"] >= start_date]
-
-    results = Results()
+    results = PlayoffResults()
 
     for i in range(num_epochs):
         if i % 100 == 0:
             print(str(i) + "/" + str(num_epochs))
-        sub_elo = elo[elo["dateObject"] >= start_date]
         # Sim remaining games
         for index, row in rem_games.iterrows():
             team1 = row.team1
@@ -370,15 +266,13 @@ if __name__ == "__main__":
             standings.update_elo(team1, row.elo1_pre)
             standings.update_elo(team2, row.elo2_pre)
             rand = random.random()
-            if rand <= prob: # team 1 wins
-                standings.add_result(code1, code2, Result.T1WIN)
-                #print("Winner: " + team1 + ", Loser: " + team2)
-            else: # team 2 wins
-                standings.add_result(code1, code2, Result.T1LOSS)
-                #print("Winner: " + team2 + ", Loser: " + team1)
+            result = Result.T1WIN if rand <= prob else Result.T1LOSS
+            standings.add_result(code1, code2, result)
             
         # Determine seedings
-        afc_seeds, nfc_seeds = get_playoff_seeds(standings)
+        afc_seeds, nfc_seeds = tiebreakers.get_playoff_seeds(standings)
+        print(afc_seeds)
+        print(nfc_seeds)
         for ind, team in enumerate(afc_seeds):
             team.playoff_seed = ind + 1
 
