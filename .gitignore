@@ -1,2 +1,5 @@
 testing.py
 .DS_Store
+.vscode/launch.json
+__pycache__/main.cpython-39.pyc
+*.pyc
