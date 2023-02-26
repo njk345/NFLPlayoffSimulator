@@ -52,11 +52,9 @@ class Tiebreakers:
         if len(tied) == 2: # two teams tied
             return self.two_team_div_tiebreaker(tied[0], tied[1])
         if len(tied) > 2:
-            # TODO: handle 3 team+ division ties
             return self.threeplus_team_div_tiebreaker(tied)
 
     def get_wildcards(self, standings, is_afc, div_champs):
-        # TODO: write get wildcards function for a conference
         rem_teams = []
         if is_afc:
             for d in standings.afc:
@@ -76,8 +74,8 @@ class Tiebreakers:
             while rem_teams[0] == rem_teams[i]:
                 i += 1
             if i == 1: # If no ties, add first team and continue
-                wildcards.append(rem_teams[1])
-                rem_teams.pop(1)
+                wildcards.append(rem_teams[0])
+                rem_teams.pop(0)
             elif i == 2: # If two teams tied, run two-team tiebreaker
                 # Determine if from same division or not
                 if rem_teams[0].divName == rem_teams[1].divName:
@@ -133,7 +131,7 @@ class Tiebreakers:
         assert len(afc_champs) == 4
         assert len(nfc_champs) == 4
 
-        # TODO: sort division champs into 1-4 seeds
+        # sort division champs into 1-4 seeds
         seed1a = self.threeplus_team_wc_tiebreaker(afc_champs)
         afc_champs.pop(self.find_team(afc_champs, seed1a))
         seed2a = self.threeplus_team_wc_tiebreaker(afc_champs)
@@ -168,6 +166,8 @@ class Tiebreakers:
     # 4. Conference record
     # 5. Coin flip
     def two_team_div_tiebreaker(self, team1, team2):
+        # TODO: switch all tiebreakers to returning list of teams (not Result)
+        # the div / wc tiebreakers return a single Team
         if team1 > team2:
             return team1
         elif team2 > team1:
@@ -210,7 +210,11 @@ class Tiebreakers:
         return tb4
 
     # Takes in a list of three or more Team objects and returns the winner (1) after divisional tiebreakers
-    def threeplus_team_div_tiebreaker(self, teams):        
+    def threeplus_team_div_tiebreaker(self, teams):    
+        # check for if one team has better WLT than others, just like two-way tiebreakers    
+        teams.sort(reverse=True)
+        if teams[0] > teams[1]:
+            return teams[0]
         tiebreakers = [self.tiebreaker6, self.tiebreaker7, self.tiebreaker8, self.tiebreaker9, self.tiebreaker10]
         left = teams
         for i in range(len(tiebreakers)):
@@ -221,6 +225,10 @@ class Tiebreakers:
 
     # Takes in a list of three or more Team objects and returns the winner (1) after wild card tiebreakers
     def threeplus_team_wc_tiebreaker(self, teams):
+        # check for if one team has better WLT than others, just like two-way tiebreakers    
+        teams.sort(reverse=True)
+        if teams[0] > teams[1]:
+            return teams[0]
         tiebreakers = [self.tiebreaker11, self.tiebreaker9, self.tiebreaker8, self.tiebreaker10]
         left = teams
         for i in range(len(tiebreakers)):
@@ -304,14 +312,14 @@ class Tiebreakers:
         t1wins = 0
         for game in team1.games:
             opp = self.get_opp(game, team1)
-            if self.team_info[opp]["DIV"].startswith(self.team_info[team1.code]["DIV"]):
+            if self.team_info[opp]["DIV"].startswith(self.team_info[team1.code]["DIV"].split(" ")[0]):
                 # opponent in same conference
                 is_t1 = self.is_team1(game, team1)
                 t1wins += self.wins_from_game(game, team1)
         t2wins = 0
         for game in team2.games:
             opp = self.get_opp(game, team2)
-            if self.team_info[opp]["DIV"].startswith(self.team_info[team2.code]["DIV"]):
+            if self.team_info[opp]["DIV"].startswith(self.team_info[team2.code]["DIV"].split(" ")[0]):
                 # opponent in same conference
                 is_t1 = self.is_team1(game, team2)
                 t2wins += self.wins_from_game(game, team2)

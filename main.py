@@ -3,13 +3,13 @@ import requests
 import base64
 import json
 import random
-from datetime import datetime
+from datetime import datetime, timedelta
 from tiebreakers import Tiebreakers, Result
 
 standings_url = "https://api.mysportsfeeds.com/v2.1/pull/nfl/2022-2023-regular/standings.json"
 key = "620395f2-bb1d-4a47-b464-697aec"
 division_names = ["AFC East", "AFC North", "AFC West", "AFC South", "NFC East", "NFC North", "NFC West", "NFC South"]
-num_epochs = 1
+num_epochs = 10000
 
 abbs_to_codes = None
 team_info = None # map of team codes to dicts containing abbr, name, division name
@@ -21,7 +21,7 @@ class Team:
         self.wins = wins
         self.losses = losses
         self.ties = ties
-        self.playoff_elo = 0
+        self.playoff_elo = 0 #TODO: this still not working
         self.playoff_seed = 0
         self.divName = divName
         self.conf = conf
@@ -42,6 +42,8 @@ class Team:
             else:
                 self.ties += 1
         self.games.append(game)
+    def wlt(self):
+        return (self.wins + 0.5*self.ties) / len(self.games)
     def __repr__(self):
         if self.ties > 0:
             return self.name + " (" + str(self.wins) + "-" + str(self.losses) + "-" + str(self.ties) + ")"
@@ -51,14 +53,12 @@ class Team:
             return self.name + " (" + str(self.wins) + "-" + str(self.losses) + "-" + str(self.ties) + ")"
         return self.name + " (" + str(self.wins) + "-" + str(self.losses) + ")"
     def __gt__(self, other):
-        return self.wins + 0.5 * self.ties > other.wins + 0.5 * other.ties
+        return self.wlt() > other.wlt()
     def __eq__(self, other):
         # allows comparison between Team object and int, respresenting a team code
         if isinstance(other, int):
             return self.code == other
-        wlt_self = (self.wins + 0.5 * self.ties) / len(self.games)
-        wlt_other = (other.wins + 0.5 * other.ties) / len(other.games)
-        return wlt_self == wlt_other
+        return self.wlt() == other.wlt()
     def __hash__(self):
         return hash(self.code)
     def same(self, other):
@@ -239,9 +239,6 @@ if __name__ == "__main__":
         for col in rest.columns:
             team_info[ids[row]][col] = rest.loc[row, col]
     
-    # First load standings at current week --> each team wins and losses, organized by division / conferences
-    standings = Standings(info, past_results)
-
     tiebreakers = Tiebreakers(abbs_to_codes, team_info)
 
     # 1. Standings contain info from API for already-played games
@@ -256,6 +253,8 @@ if __name__ == "__main__":
     for i in range(num_epochs):
         if i % 100 == 0:
             print(str(i) + "/" + str(num_epochs))
+        # First load standings at current week --> each team wins and losses, organized by division / conferences
+        standings = Standings(info, past_results)
         # Sim remaining games
         for index, row in rem_games.iterrows():
             team1 = row.team1
@@ -268,11 +267,25 @@ if __name__ == "__main__":
             rand = random.random()
             result = Result.T1WIN if rand <= prob else Result.T1LOSS
             standings.add_result(code1, code2, result)
-            
+
+        if rem_games.empty:
+            # get elo's from last week of past_results
+            last_date = past_results[past_results.playoff.isna()].tail(1).dateObject.iloc[0]
+            last_date_minus1 = last_date - pd.Timedelta(days=1)
+            last_week = past_results[(past_results.dateObject == last_date) | (past_results.dateObject == last_date_minus1)]
+            for index, row in last_week.iterrows():
+                team1 = row.team1
+                team2 = row.team2
+                code1 = abbs_to_codes[team1]
+                code2 = abbs_to_codes[team2]
+                prob = row.elo_prob1 # prob that team1 wins
+                standings.update_elo(team1, row.elo1_pre)
+                standings.update_elo(team2, row.elo2_pre)
+
         # Determine seedings
         afc_seeds, nfc_seeds = tiebreakers.get_playoff_seeds(standings)
-        print(afc_seeds)
-        print(nfc_seeds)
+        # print(afc_seeds)
+        # print(nfc_seeds)
         for ind, team in enumerate(afc_seeds):
             team.playoff_seed = ind + 1
 
@@ -310,9 +323,6 @@ if __name__ == "__main__":
 
         # log result
         results.add_result(sb)
-
-        # reset standings
-        standings.reset(info)
     
     print(results)
     
