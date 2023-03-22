@@ -3,3 +3,6 @@ testing.py
 .vscode/launch.json
 __pycache__/main.cpython-39.pyc
 *.pyc
+.vscode/settings.json
+blah.py
+*.profile

@@ -1,0 +1,4 @@
+name: nflsim
+dependencies:
+  - pandas
+  - snakeviz

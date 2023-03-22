@@ -17,6 +17,7 @@ class TestTiebreakers(unittest.TestCase):
         # past_results load here for specific year
         
     def test_getplayoffseeds(self):
+        # manually check these years against wikipedia
         for year in range(2002, 2023):
             start_date = datetime.now() # use today's date to stay current
             elo = pd.read_csv("nfl_elo.csv")

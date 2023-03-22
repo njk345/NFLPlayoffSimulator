@@ -1,7 +1,4 @@
 import pandas as pd
-import requests
-import base64
-import json
 import random
 from datetime import datetime, timedelta
 from tiebreakers import Tiebreakers, Result
@@ -9,7 +6,7 @@ from tiebreakers import Tiebreakers, Result
 standings_url = "https://api.mysportsfeeds.com/v2.1/pull/nfl/2022-2023-regular/standings.json"
 key = "620395f2-bb1d-4a47-b464-697aec"
 division_names = ["AFC EAST", "AFC NORTH", "AFC WEST", "AFC SOUTH", "NFC EAST", "NFC NORTH", "NFC WEST", "NFC SOUTH"]
-num_epochs = 1000
+num_epochs = 10000
 elo_file = "nfl_elo_22-23.csv"
 info_file = "team_info.csv"
 
@@ -343,7 +340,9 @@ def get_last_elos(standings, past_results):
 if __name__ == "__main__":
     league_info = LeagueInfo(info_file)
 
-    start_date = datetime.now() # use today's date to stay current
+    # start_date = datetime.now() # use today's date to stay current
+    start_date = datetime.strptime("9-1-2022", "%m-%d-%Y")
+    print(start_date)
     elo = pd.read_csv(elo_file)
     elo = elo[elo["playoff"].isna()]
     elo["dateObject"] = elo["date"].apply((lambda x: datetime.strptime(x, "%Y-%m-%d")))
@@ -386,6 +385,8 @@ if __name__ == "__main__":
         if rem_games.empty:
             get_last_elos(standings, past_results)
 
+        # if i % 100 == 0:
+        #     print(standings)
         # Determine seedings
         afc_seeds, nfc_seeds = tiebreakers.get_playoff_seeds(standings)
         # print(afc_seeds)
