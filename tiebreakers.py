@@ -7,13 +7,11 @@ class Result(Enum):
     TIE = 2
 
 class Tiebreakers:
-    def __init__(self, abbs_to_codes, team_info):
-        self.abbs_to_codes = abbs_to_codes
+    def __init__(self, team_info):
         self.team_info = team_info
 
     def wins_from_game(self, game, team):
-        is_t1 = self.is_team1(game, team)
-        if is_t1:
+        if self.is_team1(game, team):
             if game.result == Result.T1WIN:
                 return 1
             elif game.result == Result.T1LOSS:
@@ -29,7 +27,7 @@ class Tiebreakers:
                 return 0.5
 
     def is_team1(self, game, team):
-        return team.code == game.t1code
+        return team.abb == game.t1abb
 
     def find_team(self, teams, team):
         for i in range(len(teams)):
@@ -37,18 +35,20 @@ class Tiebreakers:
                 return i
 
     def get_opp(self, game, team):
-        return game.t2code if self.is_team1(game, team) else game.t1code
+        return game.t2abb if self.is_team1(game, team) else game.t1abb
 
+    # div is a list of Teams
     def get_division_champ(self, div):
-        # division has a list of Team objects
-        div.teams.sort(reverse=True)
+        div.sort(reverse=True)
         # find out how many teams are tied (2-4)
-        for i in range(1, len(div.teams)):
-            if div.teams[i] != div.teams[0]:
+        i = 1
+        while i < len(div):
+            if div[i] != div[0]:
                 break
-        tied = div.teams[:i]
+            i += 1
+        tied = div[:i]
         if len(tied) == 1: # no ties, return top team
-            return div.teams[0]
+            return div[0]
         if len(tied) == 2: # two teams tied
             return self.two_team_div_tiebreaker(tied[0], tied[1])
         if len(tied) > 2:
@@ -57,21 +57,20 @@ class Tiebreakers:
     def get_wildcards(self, standings, is_afc, div_champs):
         rem_teams = []
         if is_afc:
-            for d in standings.afc:
-                rem_teams.extend(d.teams)
+            for d in standings.afc.values():
+                rem_teams.extend(d)
         else:
-            for d in standings.nfc:
-                rem_teams.extend(d.teams)
+            for d in standings.nfc.values():
+                rem_teams.extend(d)
         rem_teams = list(set(rem_teams).difference(div_champs))
         # Figure out tiebreakers
         rem_teams.sort(reverse=True)
         wildcards = []
         i = 0
-        j = 1
         # Fill the wildcards one at a time
         while len(wildcards) < 3:
             i = 0
-            while rem_teams[0] == rem_teams[i]:
+            while i < len(rem_teams) and rem_teams[0] == rem_teams[i]:
                 i += 1
             if i == 1: # If no ties, add first team and continue
                 wildcards.append(rem_teams[0])
@@ -128,13 +127,12 @@ class Tiebreakers:
     def get_playoff_seeds(self, standings):
         # returns two lists, with 7 playoff seeds in AFC and NFC
         # get division champs
-
         afc_champs = []
-        for d in standings.afc:
+        for d in standings.afc.values():
             champ = self.get_division_champ(d)
             afc_champs.append(champ)
         nfc_champs = []
-        for d in standings.nfc:
+        for d in standings.nfc.values():
             champ = self.get_division_champ(d)
             nfc_champs.append(champ)
         assert len(afc_champs) == 4
@@ -175,7 +173,6 @@ class Tiebreakers:
     # 4. Conference record
     # 5. Coin flip
     def two_team_div_tiebreaker(self, team1, team2):
-        # TODO: switch all tiebreakers to returning list of teams (not Result)
         # the div / wc tiebreakers return a single Team
         if team1 > team2:
             return team1
@@ -289,7 +286,7 @@ class Tiebreakers:
         for game in team1.games:
             # abbr of opposing team
             opp = self.get_opp(game, team1)
-            if opp == team2.code:
+            if opp == team2.abb:
                 # found game against team2
                 t1wins += self.wins_from_game(game, team1)
                 t2wins += self.wins_from_game(game, team2)
@@ -304,15 +301,13 @@ class Tiebreakers:
         t1wins = 0
         for game in team1.games:
             opp = self.get_opp(game, team1)
-            is_t1 = self.is_team1(game, team1)
-            if self.team_info[opp]["DIV"] == self.team_info[team1.code]["DIV"]:
+            if self.team_info[opp]["DIV"] == team1.divName:
                 # teams in same division, count result
                 t1wins += self.wins_from_game(game, team1)
         t2wins = 0
         for game in team2.games:
             opp = self.get_opp(game, team2)
-            is_t1 = self.is_team1(game, team2)
-            if self.team_info[opp]["DIV"] == self.team_info[team2.code]["DIV"]:
+            if self.team_info[opp]["DIV"] == team2.divName:
                 # teams in same division, count result
                 t2wins += self.wins_from_game(game, team2)
         if t1wins > t2wins:
@@ -353,16 +348,14 @@ class Tiebreakers:
         t1wins = 0
         for game in team1.games:
             opp = self.get_opp(game, team1)
-            if self.team_info[opp]["DIV"].startswith(self.team_info[team1.code]["DIV"].split(" ")[0]):
+            if self.team_info[opp]["DIV"].startswith(team1.conf):
                 # opponent in same conference
-                is_t1 = self.is_team1(game, team1)
                 t1wins += self.wins_from_game(game, team1)
         t2wins = 0
         for game in team2.games:
             opp = self.get_opp(game, team2)
-            if self.team_info[opp]["DIV"].startswith(self.team_info[team2.code]["DIV"].split(" ")[0]):
+            if self.team_info[opp]["DIV"].startswith(team2.conf):
                 # opponent in same conference
-                is_t1 = self.is_team1(game, team2)
                 t2wins += self.wins_from_game(game, team2)
         if t1wins > t2wins:
             return [team1]
@@ -378,15 +371,15 @@ class Tiebreakers:
     # returns array of the teams remaining after tiebreaker
     def tiebreaker6(self, teams):
         # For each team, tally record against games against other teams
-        codes = set()
+        abbs = set()
         for t in teams:
-            codes.add(t)
+            abbs.add(t.abb)
         records = []
         for t in teams:
             tot_wins = 0
             for g in t.games:
                 opp = self.get_opp(g, t)
-                if opp in codes:
+                if opp in abbs:
                     tot_wins += self.wins_from_game(g, t)
             records.append((tot_wins, t))
         records = sorted(records, key=lambda x: x[0], reverse=True)
@@ -417,7 +410,7 @@ class Tiebreakers:
 
     # 3+ team common-games
     def tiebreaker8(self, teams, minimum):
-        opps = [] # list of sets, each containing a team's opponents (codes)
+        opps = [] # list of sets, each containing a team's opponents
         for t in teams:
             t_opps = set()
             for game in t.games:
@@ -451,7 +444,7 @@ class Tiebreakers:
             tot_wins = 0
             for g in t.games:
                 opp = self.get_opp(g, t)
-                if self.team_info[opp]["DIV"][:3] == t.divName[:3]: # game is in-conference
+                if self.team_info[opp]["DIV"][:3] == t.conf: # game is in-conference
                     tot_wins += self.wins_from_game(g, t)
             records.append((tot_wins, t))
         records = sorted(records, key=lambda x: x[0], reverse=True)
@@ -470,7 +463,7 @@ class Tiebreakers:
     def tiebreaker11(self, teams):
         # If one team defeated all others, they win tiebreaker
         # If one team lost to all others, they are eliminated from tiebreaker
-        team_set = set([t.code for t in teams])
+        team_set = set([t.abb for t in teams])
         sweep_loser = -1 # index of team that lost to all teams, if any
         for i, t in list(enumerate(teams)):
             wins = set()
@@ -483,7 +476,7 @@ class Tiebreakers:
                 elif w == 0:
                     losses.add(opp)
             team_set_others = team_set.copy()
-            team_set_others.remove(t.code)
+            team_set_others.remove(t.abb)
             if wins.intersection(team_set_others) == team_set_others:
                 # this team beat all other teams
                 return [t]
