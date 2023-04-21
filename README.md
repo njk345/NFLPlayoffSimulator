@@ -18,6 +18,8 @@ Simulator for the rest of the NFL season, inspired by the [NY Times simulator](h
     - manually select rest of season results and show tiebreakers / seeds
     - explain tiebreakers for given records
 
+- One page, start by implementing sim of season starting from date as of certain year
+
 ### Conda
 
 Activate env: `conda activate nflsim`
