@@ -164,6 +164,16 @@ class PlayoffResults:
         else:
             self.teams_to_sbs[sb_winner.name] += 1
         self.epochs += 1
+    def table_repr(self):
+        table = []
+        sorted_teams = sorted(self.teams_to_sbs.items(), key=lambda x: x[1], reverse=True)
+        for t in sorted_teams:
+            row = {}
+            row["team_name"] = t[0]
+            row["win_percentage"] = round(t[1] / self.epochs * 100, 2)
+            row["num_wins"] = t[1]
+            table.append(row)
+        return table
     def __repr__(self):
         out = ""
         sorted_teams = sorted(self.teams_to_sbs.items(), key=lambda x: x[1], reverse=True)
@@ -204,6 +214,109 @@ def sim_reg_game(standings, team1, team2, elo_prob1, elo_pre1, elo_pre2):
     standings.update_elo(team1, elo_pre1)
     standings.update_elo(team2, elo_pre2)
     standings.add_result(team1, team2, result)
+
+def sim_season(year, start_date, epochs):
+    # Simulates a season and returns the playoff results
+    league_info = LeagueInfo(info_file)
+    season = datetime(year=year, month=9, day=1)
+
+    # start_date = datetime.now() # use today's date to stay current
+    # start_date = datetime.strptime(start_date, "%m-%d-%Y")
+    elo = pd.read_csv(elo_file)
+    elo = elo[elo["playoff"].isna()]
+    elo["dateObject"] = elo["date"].apply((lambda x: datetime.strptime(x, "%Y-%m-%d")))
+    past_results = elo[(elo["dateObject"] < start_date) & (elo["dateObject"] >= season)]
+    rem_games = elo[elo["dateObject"] >= start_date]
+
+    # encoded_auth = "Basic " + base64.b64encode('{}:{}'.format(key,"MYSPORTSFEEDS").encode('utf-8')).decode('ascii')
+    # r = requests.get(standings_url, headers={"Authorization": encoded_auth})
+    # info = r.json()["teams"]
+    
+    tiebreakers = Tiebreakers(league_info.team_info)
+
+    # 1. Standings contain info from API for already-played games
+    # 2. Get remaining game info from elo rankings CSV
+    # 3. Simulate remaining games acc. to elo rankings
+    # 4. Get playoff seedings
+    # 5. Simulate playoffs and get Super Bowl champion
+    # 6. Repeat many times to get probabilities of playoffs and super bowl
+
+    results = PlayoffResults()
+    standings = Standings(league_info, past_results)
+
+    for i in range(epochs):
+        if i % 100 == 0:
+            print(str(i) + "/" + str(num_epochs))
+
+        # for each row, updates elo's, gathers probs and team abbrevations,
+        # sims the game, and logs the result - how to vectorize?
+
+        # TODO: this is the bottleneck
+        # Getting: team1, team2, elo_prob1, elo1_pre, elo2_pre
+        # # Sim remaining games
+        # for index, row in rem_games.iterrows():
+        #     team1 = row.team1
+        #     team2 = row.team2
+        #     prob = row.elo_prob1 # prob that team1 wins
+        #     standings.update_elo(team1, row.elo1_pre)
+        #     standings.update_elo(team2, row.elo2_pre)
+        #     rand = random.random()
+        #     result = Result.T1WIN if rand <= prob else Result.T1LOSS
+        #     standings.add_result(team1, team2, result)
+        rem_games.apply(lambda row: sim_reg_game(standings, row.team1, row.team2, row.elo_prob1, row.elo1_pre, row.elo2_pre), axis=1)
+
+        if rem_games.empty:
+            get_last_elos(standings, past_results)
+
+        # if i % 100 == 0:
+        #     print(standings)
+        # Determine seedings
+        # TODO: look into tiebreaker efficiency a bit (maybe no improvement)
+        afc_seeds, nfc_seeds = tiebreakers.get_playoff_seeds(standings)
+        # print(afc_seeds)
+        # print(nfc_seeds)
+        for ind, team in enumerate(afc_seeds):
+            team.playoff_seed = ind + 1
+
+        for ind, team in enumerate(nfc_seeds):
+            team.playoff_seed = ind + 1
+
+        # TODO: This is all pretty fast
+        # sim the playoffs
+        # WILD CARD ROUND
+        awc1 = sim_game(afc_seeds[1], afc_seeds[6])
+        awc2 = sim_game(afc_seeds[2], afc_seeds[5])
+        awc3 = sim_game(afc_seeds[3], afc_seeds[4])
+        nwc1 = sim_game(nfc_seeds[1], nfc_seeds[6])
+        nwc2 = sim_game(nfc_seeds[2], nfc_seeds[5])
+        nwc3 = sim_game(nfc_seeds[3], nfc_seeds[4])
+
+        # DIVISIONAL ROUND
+        # reseed with sorting
+        afc_rem = [awc1, awc2, awc3]
+        afc_rem = sorted(afc_rem, key=lambda x: x.playoff_seed)
+        nfc_rem = [nwc1, nwc2, nwc3]
+        nfc_rem = sorted(nfc_rem, key=lambda x: x.playoff_seed)
+
+        adv1 = sim_game(afc_seeds[0], afc_rem[2])
+        adv2 = sim_game(afc_rem[0], afc_rem[1])
+        ndv1 = sim_game(nfc_seeds[0], nfc_rem[2])
+        ndv2 = sim_game(nfc_rem[0], nfc_rem[1])
+
+        # CONFERENCE ROUND
+        acf = sim_game(adv1, adv2)
+        ncf = sim_game(ndv1, ndv2)
+        
+        # SUPER BOWL
+        sb = sim_game(acf, ncf)
+        #print("Super bowl champ: " + str(sb))
+
+        # log result
+        results.add_result(sb)
+
+        standings.reset()
+    print(results)
+    return results
 
 if __name__ == "__main__":
     time0 = time.time()

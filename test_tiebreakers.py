@@ -1,7 +1,7 @@
 import unittest
 
 from tiebreakers import *
-from main import *
+from nflsim import *
 
 elo_file = ""
 

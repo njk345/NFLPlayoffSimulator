@@ -1,4 +1,6 @@
 name: nflsim
 dependencies:
   - pandas
+  - numpy
   - snakeviz
+  - Flask

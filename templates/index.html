@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>NFL Football Playoff Simulator</title>
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <link rel="stylesheet" href="static/style.css">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script>
+        // $(document).ready(function() {
+        //     // Hide the results table initially
+        //     $('#results-table').hide();
+        //     // Submit form via AJAX to update results
+        //     $('#simulate-form').on('submit', function(event) {
+        //         event.preventDefault();
+        //         var year = $('#year').val();
+        //         var start_date = $('#start_week').val();
+        //         var epochs = $('#epochs').val();
+        //         $.ajax({
+        //             url: '/',
+        //             method: 'POST',
+        //             data: {
+        //                 'year': year,
+        //                 'start_week': start_week,
+        //                 'epochs': epochs
+        //             },
+        //             success: function(response) {
+        //                 // Update the results table with the response
+        //                 $('#results-table tbody').empty();
+        //                 var results = response.results;
+        //                 for (var i = 0; i < results.length; i++) {
+        //                     var result = results[i];
+        //                     var row = $('<tr>');
+        //                     row.append($('<td>').text(result.team_name));
+        //                     row.append($('<td>').text(result.win_percentage + '%'));
+        //                     row.append($('<td>').text(result.num_wins));
+        //                     $('#results-table tbody').append(row);
+        //                 }
+        //                 // Show the results table
+        //                 $('#results-table').show();
+        //             }
+        //         });
+        //     });
+        // });
+    </script>
+</head>
+<body>
+    <div class="container mt-5">
+        <h1 class="text-center mb-4">NFL Football Playoff Simulator</h1>
+        <form method="post" id="simulate-form" action="/">
+            <div class="form-group">
+                <label for="year">Year:</label>
+                <input type="number" class="form-control" id="year" name="year" min="2000" max="2100" required>
+            </div>
+            <div class="form-group">
+                <label for="start_week">Starting Week:</label>
+                <input type="date" class="form-control" id="start_week" name="start_week" min="2000-09-01" max="2100-12-31" required>
+            </div>
+            <div class="form-group">
+                <label for="epochs">Number of Epochs:</label>
+                <input type="number" class="form-control" id="epochs" name="epochs" min="1" max="100000" required>
+            </div>
+            <div class="text-center">
+                <button type="submit" class="btn btn-primary">Simulate</button>
+            </div>
+        </form>
+        {% if results %}
+        <table id="results-table">
+          <tr>
+            <th>Team Name</th>
+              <th>Win Percentage</th>
+              <th>Number of Wins</th>
+          </tr>
+          {% for result in results %}
+            <tr>
+                  <td>{{ result['team_name'] }}</td>
+                  <td>{{ result['win_percentage'] }}%</td>
+                  <td>{{ result['num_wins'] }}</td>
+            </tr>
+          {% endfor %}
+      </table>
+      {% endif %}
+    </div>
+</body>
+</html>
